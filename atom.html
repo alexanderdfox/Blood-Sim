@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quantum N-Body Orbital Plasma</title>
+<style>
+	body{margin:0;background:#020205;overflow:hidden;font-family:'Segoe UI', sans-serif; color: white;}
+	#ui{position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.85);padding:15px;border-radius:12px; backdrop-filter: blur(10px); border: 1px solid #444; width: 240px; user-select: none;}
+	button{margin:2px;padding:8px; cursor: pointer; background: #222; color: white; border: 1px solid #555; border-radius: 4px; transition: 0.2s;}
+	button:hover{background: #444;}
+	button.active {background: #0078d7; border-color: #00bfff;}
+	.control-group { margin-top: 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #aaa;}
+	input { width: 100%; cursor: pointer; margin-top: 5px; accent-color: #0078d7; }
+	.flex { display: flex; justify-content: space-between; align-items: center; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+	<div style="margin-bottom: 10px;">
+		<button onclick="setType('H')">H</button>
+		<button onclick="setType('He')">He</button>
+		<button onclick="setType('C')">C</button>
+		<button onclick="setType('O')">O</button>
+	</div>
+	
+	<button id="plasmaBtn" onclick="togglePlasma()" style="width:100%">Plasma Mode</button>
+
+	<div class="control-group">
+		<div class="flex"><span>Sim Speed</span><span id="timeVal">1.0x</span></div>
+		<input type="range" id="timeRange" min="0" max="4" step="0.1" value="1" oninput="updateTime(this.value)">
+	</div>
+
+	<div class="control-group">
+		<div class="flex"><span>N-Body Gravity</span><span id="gravVal">0.5</span></div>
+		<input type="range" id="gravRange" min="0" max="2" step="0.05" value="0.5" oninput="updateGravity(this.value)">
+	</div>
+
+	<div class="control-group">
+		<div class="flex"><span>Plasma Thickness</span><span id="thickVal">1.5</span></div>
+		<input type="range" id="thickRange" min="0.5" max="10" step="0.1" value="1.5" oninput="updateThickness(this.value)">
+	</div>
+
+	<button onclick="atoms.length=0" style="width:100%; margin-top:15px; background:#411;">Collapse Universe (Reset)</button>
+	<p style="font-size: 9px; color: #777; margin-top: 10px;">Click & Drag to spawn atoms with orbital velocity.</p>
+</div>
+
+<script>
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+canvas.width=innerWidth;
+canvas.height=innerHeight;
+
+let plasma=false;
+let currentType='H';
+let globalThickness = 1.5;
+let G = 0.5; // Gravitational Constant
+let timeScale = 1.0;
+
+const atoms=[];
+const ELEMENTS={
+	H:{e:1, mass: 1, color:[0,255,255]},
+	He:{e:2, mass: 4, color:[255,200,0]},
+	C:{e:6, mass: 12, color:[0,255,120]},
+	O:{e:8, mass: 16, color:[255,60,60]}
+};
+
+function updateThickness(v) { globalThickness = parseFloat(v); document.getElementById('thickVal').innerText = v; }
+function updateGravity(v) { G = parseFloat(v); document.getElementById('gravVal').innerText = v; }
+function updateTime(v) { timeScale = parseFloat(v); document.getElementById('timeVal').innerText = v + 'x'; }
+function togglePlasma() { plasma = !plasma; document.getElementById('plasmaBtn').classList.toggle('active', plasma); }
+function setType(t) { currentType = t; }
+
+class Wave {
+	constructor(atom, n) {
+		this.a = atom;
+		this.n = n;
+		this.phase = Math.random() * 6.28;
+	}
+	update(dt) {
+		this.phase += (0.02 + this.n * 0.01) * dt;
+	}
+	draw() {
+		const a = this.a;
+		const iterations = plasma ? 40 : 20;
+		for(let i=0; i < iterations; i++){
+			let t = i / iterations;
+			let r = this.n * 15 * Math.exp(-t * 1.2);
+			if(plasma){
+				r *= (1 + 0.5 * Math.sin(10 * t - this.phase));
+				r += Math.sin(this.phase + t * 8) * (3 * globalThickness);
+			}
+			ctx.beginPath();
+			ctx.arc(a.x, a.y, Math.max(0.1, r), 0, 6.28);
+			let alpha = plasma ? (0.12 * (1 - t)) : (0.05 * (1 - t));
+			ctx.lineWidth = plasma ? (globalThickness * 0.5) : 1;
+			ctx.strokeStyle = plasma ? `rgba(${a.color[0]},${a.color[1]},${a.color[2]},${alpha})` : `rgba(255,255,255,${alpha})`;
+			ctx.stroke();
+		}
+	}
+}
+
+class Atom {
+	constructor(type, x, y, vx, vy) {
+		let d = ELEMENTS[type];
+		this.x = x; this.y = y;
+		this.vx = vx; this.vy = vy;
+		this.mass = d.mass;
+		this.color = d.color;
+		this.waves = [];
+		for(let i=0; i<d.e; i++) this.waves.push(new Wave(this, Math.floor(i/2) + 1));
+	}
+
+	applyPhysics(others, dt) {
+		others.forEach(other => {
+			if (other === this) return;
+			let dx = other.x - this.x;
+			let dy = other.y - this.y;
+			let distSq = dx*dx + dy*dy + 100; // Softening factor to prevent infinite force
+			let dist = Math.sqrt(distSq);
+			
+			// F = G * (m1 * m2) / r^2
+			let force = (G * this.mass * other.mass) / distSq;
+			
+			// Acceleration a = F / m
+			this.vx += (force * (dx / dist) / this.mass) * dt;
+			this.vy += (force * (dy / dist) / this.mass) * dt;
+		});
+
+		this.x += this.vx * dt;
+		this.y += this.vy * dt;
+		
+		// Quantum phase update
+		this.waves.forEach(w => w.update(dt));
+	}
+
+	draw() {
+		ctx.beginPath();
+		ctx.arc(this.x, this.y, 2 + this.mass/5, 0, 6.28);
+		ctx.fillStyle = `rgb(${this.color[0]},${this.color[1]},${this.color[2]})`;
+		ctx.fill();
+		this.waves.forEach(w => w.draw());
+	}
+}
+
+// Spawning logic with velocity
+let mDown = false, startX, startY;
+canvas.addEventListener('mousedown', e => {
+	mDown = true;
+	startX = e.clientX; startY = e.clientY;
+});
+
+window.addEventListener('mouseup', e => {
+	if(!mDown) return;
+	// Launch velocity based on drag distance/direction
+	let vx = (e.clientX - startX) * 0.05;
+	let vy = (e.clientY - startY) * 0.05;
+	atoms.push(new Atom(currentType, startX, startY, vx, vy));
+	mDown = false;
+});
+
+function loop() {
+	ctx.fillStyle = "rgba(2, 2, 8, 0.3)";
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+	for (let i = 0; i < atoms.length; i++) {
+		atoms[i].applyPhysics(atoms, timeScale);
+		atoms[i].draw();
+	}
+	requestAnimationFrame(loop);
+}
+
+loop();
+window.onresize = () => { canvas.width = innerWidth; canvas.height = innerHeight; };
+</script>
+</body>
+</html>
