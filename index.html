@@ -3,176 +3,198 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Quantum N-Body Orbital Plasma</title>
+<title>Scale-Shift: Quantum, Blood, Space</title>
 <style>
-	body{margin:0;background:#020205;overflow:hidden;font-family:'Segoe UI', sans-serif; color: white;}
-	#ui{position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.85);padding:15px;border-radius:12px; backdrop-filter: blur(10px); border: 1px solid #444; width: 240px; user-select: none;}
-	button{margin:2px;padding:8px; cursor: pointer; background: #222; color: white; border: 1px solid #555; border-radius: 4px; transition: 0.2s;}
-	button:hover{background: #444;}
-	button.active {background: #0078d7; border-color: #00bfff;}
-	.control-group { margin-top: 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #aaa;}
-	input { width: 100%; cursor: pointer; margin-top: 5px; accent-color: #0078d7; }
-	.flex { display: flex; justify-content: space-between; align-items: center; }
+	body{margin:0;background:#000;overflow:hidden;font-family:sans-serif;color:#fff;}
+	#ui{position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.85);padding:15px;border-radius:12px;border:1px solid #444;width:260px;z-index:100;}
+	.scale-select { display:flex; gap:4px; margin-bottom:12px; }
+	.scale-select button { flex:1; font-size:10px; padding:8px; background:#222; color:#888; border:1px solid #444; cursor:pointer;}
+	.scale-select button.active { background:#0078d7; color:#fff; border-color:#00bfff; }
+	
+	#info-card { margin-top:10px; padding:10px; background:rgba(0,255,255,0.1); border:1px solid #0ff; border-radius:8px; display:none; }
+	.slider-group { margin-top:10px; font-size:10px; color:#aaa; text-transform:uppercase; }
+	input[type=range] { width:100%; accent-color:#0078d7; cursor:pointer; }
+	.val { float:right; color:#00bfff; }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <div id="ui">
-	<div style="margin-bottom: 10px;">
-		<button onclick="setType('H')">H</button>
-		<button onclick="setType('He')">He</button>
-		<button onclick="setType('C')">C</button>
-		<button onclick="setType('O')">O</button>
+	<div class="scale-select">
+		<button id="s-quantum" onclick="setScale('quantum')">Quantum</button>
+		<button id="s-plasma" onclick="setScale('plasma')">Plasma</button>
+		<button id="s-space" onclick="setScale('space')">Space</button>
+	</div>
+
+	<div class="scale-select">
+		<button onclick="curZ=1">H</button>
+		<button onclick="curZ=6">C</button>
+		<button onclick="curZ=26">Fe</button>
+		<button onclick="isPaused=!isPaused">⏯</button>
+	</div>
+
+	<div id="info-card">
+		<b id="node-name"></b> <span id="node-sym" style="float:right"></span>
+		<p id="node-desc" style="font-size:10px; margin:5px 0; color:#ccc;"></p>
+	</div>
+
+	<div class="slider-group">
+		Time Speed <span class="val" id="t-val">1.0</span>
+		<input type="range" min="0" max="4" step="0.1" value="1" oninput="tScale=this.value; document.getElementById('t-val').innerText=this.value">
+	</div>
+
+	<div class="slider-group">
+		Gravity/Force <span class="val" id="g-val">1.0</span>
+		<input type="range" min="0" max="3" step="0.1" value="1" oninput="gConst=this.value; document.getElementById('g-val').innerText=this.value">
 	</div>
 	
-	<button id="plasmaBtn" onclick="togglePlasma()" style="width:100%">Plasma Mode</button>
-
-	<div class="control-group">
-		<div class="flex"><span>Sim Speed</span><span id="timeVal">1.0x</span></div>
-		<input type="range" id="timeRange" min="0" max="4" step="0.1" value="1" oninput="updateTime(this.value)">
-	</div>
-
-	<div class="control-group">
-		<div class="flex"><span>N-Body Gravity</span><span id="gravVal">0.5</span></div>
-		<input type="range" id="gravRange" min="0" max="2" step="0.05" value="0.5" oninput="updateGravity(this.value)">
-	</div>
-
-	<div class="control-group">
-		<div class="flex"><span>Plasma Thickness</span><span id="thickVal">1.5</span></div>
-		<input type="range" id="thickRange" min="0.5" max="10" step="0.1" value="1.5" oninput="updateThickness(this.value)">
-	</div>
-
-	<button onclick="atoms.length=0" style="width:100%; margin-top:15px; background:#411;">Collapse Universe (Reset)</button>
-	<p style="font-size: 9px; color: #777; margin-top: 10px;">Click & Drag to spawn atoms with orbital velocity.</p>
+	<button onclick="atoms=[]" style="width:100%; margin-top:10px; background:#411; border:none; color:#f88; padding:5px;">Reset Universe</button>
 </div>
 
 <script>
-const canvas=document.getElementById('c');
-const ctx=canvas.getContext('2d');
-canvas.width=innerWidth;
-canvas.height=innerHeight;
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let atoms = [];
+let curZ = 1;
+let scaleMode = 'quantum';
+let tScale = 1.0;
+let gConst = 1.0;
+let isPaused = false;
 
-let plasma=false;
-let currentType='H';
-let globalThickness = 1.5;
-let G = 0.5; // Gravitational Constant
-let timeScale = 1.0;
-
-const atoms=[];
-const ELEMENTS={
-	H:{e:1, mass: 1, color:[0,255,255]},
-	He:{e:2, mass: 4, color:[255,200,0]},
-	C:{e:6, mass: 12, color:[0,255,120]},
-	O:{e:8, mass: 16, color:[255,60,60]}
+const ELEMENTS = {
+	1: { n: "Hydrogen", s: "H", d: "Standard stellar fuel." },
+	6: { n: "Carbon", s: "C", d: "Foundational life atom." },
+	26: { n: "Iron", s: "Fe", d: "The stability limit of fusion." }
 };
 
-function updateThickness(v) { globalThickness = parseFloat(v); document.getElementById('thickVal').innerText = v; }
-function updateGravity(v) { G = parseFloat(v); document.getElementById('gravVal').innerText = v; }
-function updateTime(v) { timeScale = parseFloat(v); document.getElementById('timeVal').innerText = v + 'x'; }
-function togglePlasma() { plasma = !plasma; document.getElementById('plasmaBtn').classList.toggle('active', plasma); }
-function setType(t) { currentType = t; }
+function setScale(s) {
+	scaleMode = s;
+	document.querySelectorAll('.scale-select button').forEach(b => b.classList.remove('active'));
+	document.getElementById('s-'+s).classList.add('active');
+}
 
-class Wave {
-	constructor(atom, n) {
-		this.a = atom;
-		this.n = n;
-		this.phase = Math.random() * 6.28;
-	}
-	update(dt) {
-		this.phase += (0.02 + this.n * 0.01) * dt;
-	}
-	draw() {
-		const a = this.a;
-		const iterations = plasma ? 40 : 20;
-		for(let i=0; i < iterations; i++){
-			let t = i / iterations;
-			let r = this.n * 15 * Math.exp(-t * 1.2);
-			if(plasma){
-				r *= (1 + 0.5 * Math.sin(10 * t - this.phase));
-				r += Math.sin(this.phase + t * 8) * (3 * globalThickness);
-			}
-			ctx.beginPath();
-			ctx.arc(a.x, a.y, Math.max(0.1, r), 0, 6.28);
-			let alpha = plasma ? (0.12 * (1 - t)) : (0.05 * (1 - t));
-			ctx.lineWidth = plasma ? (globalThickness * 0.5) : 1;
-			ctx.strokeStyle = plasma ? `rgba(${a.color[0]},${a.color[1]},${a.color[2]},${alpha})` : `rgba(255,255,255,${alpha})`;
-			ctx.stroke();
-		}
-	}
+function getIUPAC(z) {
+	if (ELEMENTS[z]) return ELEMENTS[z];
+	const roots = ["nil", "un", "bi", "tri", "quad", "pent", "hex", "sept", "oct", "enn"];
+	let name = z.toString().split('').map(d => roots[parseInt(d)]).join('') + "ium";
+	return { n: name.charAt(0).toUpperCase() + name.slice(1), s: "E"+z, d: "Fused synthetic isotope." };
 }
 
 class Atom {
-	constructor(type, x, y, vx, vy) {
-		let d = ELEMENTS[type];
-		this.x = x; this.y = y;
-		this.vx = vx; this.vy = vy;
-		this.mass = d.mass;
-		this.color = d.color;
-		this.waves = [];
-		for(let i=0; i<d.e; i++) this.waves.push(new Wave(this, Math.floor(i/2) + 1));
+	constructor(z, x, y, vx, vy) {
+		this.z = z; this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+		this.angle = Math.random() * 6.28;
 	}
 
-	applyPhysics(others, dt) {
-		others.forEach(other => {
+	applyPhysics() {
+		if (isPaused) return;
+
+		atoms.forEach(other => {
 			if (other === this) return;
-			let dx = other.x - this.x;
-			let dy = other.y - this.y;
-			let distSq = dx*dx + dy*dy + 100; // Softening factor to prevent infinite force
-			let dist = Math.sqrt(distSq);
-			
-			// F = G * (m1 * m2) / r^2
-			let force = (G * this.mass * other.mass) / distSq;
-			
-			// Acceleration a = F / m
-			this.vx += (force * (dx / dist) / this.mass) * dt;
-			this.vy += (force * (dy / dist) / this.mass) * dt;
+			let dx = other.x - this.x, dy = other.y - this.y;
+			let d2 = dx*dx + dy*dy + 50;
+			let d = Math.sqrt(d2);
+
+			if (scaleMode === 'space') {
+				// F = G(m1m2)/r^2
+				let f = (0.5 * gConst * this.z * other.z) / d2;
+				this.vx += (f * dx/d) / this.z;
+				this.vy += (f * dy/d) / this.z;
+			} else if (scaleMode === 'plasma') {
+				// Drag and Cohesion
+				this.vx *= 0.98; this.vy *= 0.98;
+				if (d < 100) { this.vx += dx * 0.001 * gConst; this.vy += dy * 0.001 * gConst; }
+			} else {
+				// Quantum: High vibration + Strong Force
+				this.vx += (Math.random()-0.5) * 0.5;
+				if (d < 60) { // Strong force attraction
+					this.vx += dx * 0.01 * gConst; this.vy += dy * 0.01 * gConst;
+				}
+			}
+
+			// Fusion Trigger
+			if (d < (Math.sqrt(this.z)*4 + Math.sqrt(other.z)*4)) {
+				let relV = Math.hypot(this.vx - other.vx, this.vy - other.vy);
+				if (relV > 2 || scaleMode === 'quantum') this.fuse(other);
+			}
 		});
 
-		this.x += this.vx * dt;
-		this.y += this.vy * dt;
+		if (scaleMode === 'plasma') this.vx += Math.sin(Date.now()*0.005) * 0.1; // Heartbeat
+
+		this.x += this.vx * tScale;
+		this.y += this.vy * tScale;
 		
-		// Quantum phase update
-		this.waves.forEach(w => w.update(dt));
+		// Boundaries
+		if (this.x < 0 || this.x > canvas.width) this.vx *= -0.8;
+		if (this.y < 0 || this.y > canvas.height) this.vy *= -0.8;
+		this.angle += 0.05 * tScale;
+	}
+
+	fuse(other) {
+		this.vx = (this.vx * this.z + other.vx * other.z) / (this.z + other.z);
+		this.vy = (this.vy * this.z + other.vy * other.z) / (this.z + other.z);
+		this.z += other.z;
+		atoms = atoms.filter(a => a !== other);
+		this.updateUI();
+	}
+
+	updateUI() {
+		const data = getIUPAC(this.z);
+		document.getElementById('info-card').style.display = 'block';
+		document.getElementById('node-name').innerText = data.n;
+		document.getElementById('node-sym').innerText = data.s;
+		document.getElementById('node-desc').innerText = data.d;
 	}
 
 	draw() {
-		ctx.beginPath();
-		ctx.arc(this.x, this.y, 2 + this.mass/5, 0, 6.28);
-		ctx.fillStyle = `rgb(${this.color[0]},${this.color[1]},${this.color[2]})`;
-		ctx.fill();
-		this.waves.forEach(w => w.draw());
+		let r = 4 + Math.sqrt(this.z) * 3;
+		let hue = (this.z * 137) % 360;
+		ctx.save();
+		ctx.translate(this.x, this.y);
+
+		// Scale-specific Rendering
+		if (scaleMode === 'quantum') {
+			ctx.shadowBlur = 15; ctx.shadowColor = `hsl(${hue},100%,50%)`;
+			// Probability Cloud
+			ctx.fillStyle = `hsla(${hue}, 100%, 50%, 0.1)`;
+			ctx.beginPath(); ctx.arc(0,0, r*3, 0, 6.28); ctx.fill();
+		}
+
+		// Nucleus
+		ctx.fillStyle = `hsl(${hue}, 80%, 50%)`;
+		ctx.beginPath(); ctx.arc(0,0, r, 0, 6.28); ctx.fill();
+
+		// Electrons (Bohr Shells)
+		let shells = Math.ceil(this.z / 6);
+		ctx.strokeStyle = `hsla(${hue}, 80%, 70%, 0.3)`;
+		for(let i=1; i<=shells; i++) {
+			ctx.beginPath(); ctx.arc(0,0, r + i*8, 0, 6.28); ctx.stroke();
+		}
+		ctx.restore();
 	}
 }
 
-// Spawning logic with velocity
-let mDown = false, startX, startY;
+let mDown = false, sX, sY;
 canvas.addEventListener('mousedown', e => {
-	mDown = true;
-	startX = e.clientX; startY = e.clientY;
+	let target = atoms.find(a => Math.hypot(a.x-e.clientX, a.y-e.clientY) < 30);
+	if (target) { target.updateUI(); return; }
+	mDown = true; sX = e.clientX; sY = e.clientY;
 });
-
 window.addEventListener('mouseup', e => {
-	if(!mDown) return;
-	// Launch velocity based on drag distance/direction
-	let vx = (e.clientX - startX) * 0.05;
-	let vy = (e.clientY - startY) * 0.05;
-	atoms.push(new Atom(currentType, startX, startY, vx, vy));
+	if (!mDown) return;
+	atoms.push(new Atom(curZ, sX, sY, (e.clientX-sX)*0.1, (e.clientY-sY)*0.1));
 	mDown = false;
 });
 
 function loop() {
-	ctx.fillStyle = "rgba(2, 2, 8, 0.3)";
-	ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-	for (let i = 0; i < atoms.length; i++) {
-		atoms[i].applyPhysics(atoms, timeScale);
-		atoms[i].draw();
-	}
+	canvas.width = innerWidth; canvas.height = innerHeight;
+	ctx.fillStyle = scaleMode === 'plasma' ? '#100' : '#000';
+	ctx.fillRect(0,0,canvas.width, canvas.height);
+	atoms.forEach(a => { a.applyPhysics(); a.draw(); });
 	requestAnimationFrame(loop);
 }
-
+setScale('quantum');
 loop();
-window.onresize = () => { canvas.width = innerWidth; canvas.height = innerHeight; };
 </script>
 </body>
 </html>
