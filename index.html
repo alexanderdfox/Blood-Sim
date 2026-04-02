@@ -3,22 +3,35 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Scale-Shift: Quantum, Blood, Space</title>
+<title>Scale-Shift: Quantum, Blood, Space — Stellar Nucleosynthesis</title>
 <style>
-	body{margin:0;background:#000;overflow:hidden;font-family:sans-serif;color:#fff;}
-	#ui{position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.85);padding:15px;border-radius:12px;border:1px solid #444;width:260px;z-index:100;}
-	.scale-select { display:flex; gap:4px; margin-bottom:12px; }
-	.scale-select button { flex:1; font-size:10px; padding:8px; background:#222; color:#888; border:1px solid #444; cursor:pointer;}
-	.scale-select button.active { background:#0078d7; color:#fff; border-color:#00bfff; }
-	
-	#info-card { margin-top:10px; padding:10px; background:rgba(0,255,255,0.1); border:1px solid #0ff; border-radius:8px; display:none; }
-	.slider-group { margin-top:10px; font-size:10px; color:#aaa; text-transform:uppercase; }
-	input[type=range] { width:100%; accent-color:#0078d7; cursor:pointer; }
-	.val { float:right; color:#00bfff; }
+body{margin:0;background:#000;overflow:hidden;font-family:sans-serif;color:#fff;}
+#ui{position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.88);padding:15px;border-radius:12px;border:1px solid #444;width:310px;z-index:100;}
+.scale-select { display:flex; gap:4px; margin-bottom:12px; }
+.scale-select button { flex:1; font-size:10px; padding:8px; background:#222; color:#888; border:1px solid #444; cursor:pointer; border-radius:6px;}
+.scale-select button.active { background:#0078d7; color:#fff; border-color:#00bfff; }
+#info-card { margin-top:10px; padding:12px; background:rgba(0,255,255,0.08); border:1px solid #0ff; border-radius:8px; display:none; font-size:13px; }
+.slider-group { margin-top:12px; font-size:10px; color:#aaa; text-transform:uppercase; }
+input[type=range] { width:100%; accent-color:#0078d7; cursor:pointer; }
+.val { float:right; color:#00bfff; }
+.element-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:3px; margin-top:10px; max-height:160px; overflow-y:auto; padding-right:5px; }
+.element-btn { width:100%; aspect-ratio:1; font-size:10px; background:#1a1a1a; border:1px solid #444; color:#ddd; cursor:pointer; border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; transition:all 0.1s; }
+.element-btn:hover { background:#333; transform:scale(1.1); }
+.element-btn span.z { font-size:9px; opacity:0.7; }
+#stellar-stages { display:flex; flex-wrap:wrap; gap:4px; margin:12px 0; }
+#stellar-stages button { flex:1 1 45%; font-size:11px; padding:8px 6px; background:#111; border:1px solid #555; color:#ddd; cursor:pointer; border-radius:6px; }
+#stellar-stages button.active { background:#f80; color:#000; font-weight:bold; }
+#current-stage { margin:8px 0; padding:6px 10px; background:rgba(255,120,0,0.2); border-radius:6px; font-size:12px; text-align:center; }
+#controls { display:flex; gap:8px; margin-top:12px; }
+#controls button { flex:1; padding:10px; font-size:14px; background:#222; color:#fff; border:1px solid #555; border-radius:6px; cursor:pointer; }
+#controls button:hover { background:#333; }
+#controls button#pause-btn.playing { background:#0a0; }
+#log { margin-top:12px; font-size:10px; color:#0f8; max-height:110px; overflow-y:auto; background:rgba(0,30,0,0.6); padding:8px; border-radius:4px; line-height:1.3; }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+
 <div id="ui">
 	<div class="scale-select">
 		<button id="s-quantum" onclick="setScale('quantum')">Quantum</button>
@@ -26,32 +39,183 @@
 		<button id="s-space" onclick="setScale('space')">Space</button>
 	</div>
 
-	<div class="scale-select">
-		<button onclick="curZ=1">H</button>
-		<button onclick="curZ=6">C</button>
-		<button onclick="curZ=26">Fe</button>
-		<button onclick="isPaused=!isPaused">⏯</button>
+	<div style="margin:8px 0; color:#0cc; font-size:11px;">Select Element to Spawn:</div>
+	<div class="element-grid" id="element-grid"></div>
+
+	<div id="current-stage">Current Stellar Stage: <b id="stage-name">Hydrogen Burning</b></div>
+
+	<div id="stellar-stages">
+		<!-- Populated by JavaScript -->
 	</div>
 
 	<div id="info-card">
-		<b id="node-name"></b> <span id="node-sym" style="float:right"></span>
-		<p id="node-desc" style="font-size:10px; margin:5px 0; color:#ccc;"></p>
+		<b id="node-name"></b> <span id="node-sym" style="float:right; font-size:18px;"></span>
+		<p id="node-desc" style="font-size:11px; margin:6px 0; color:#ccc; line-height:1.3;"></p>
+		<small style="color:#666;">Z = <span id="node-z"></span></small>
 	</div>
 
 	<div class="slider-group">
 		Time Speed <span class="val" id="t-val">1.0</span>
 		<input type="range" min="0" max="4" step="0.1" value="1" oninput="tScale=this.value; document.getElementById('t-val').innerText=this.value">
 	</div>
-
 	<div class="slider-group">
 		Gravity/Force <span class="val" id="g-val">1.0</span>
 		<input type="range" min="0" max="3" step="0.1" value="1" oninput="gConst=this.value; document.getElementById('g-val').innerText=this.value">
 	</div>
-	
-	<button onclick="atoms=[]" style="width:100%; margin-top:10px; background:#411; border:none; color:#f88; padding:5px;">Reset Universe</button>
+
+	<div id="controls">
+		<button id="pause-btn" onclick="togglePause()">⏸ Pause</button>
+		<button onclick="atoms=[]; fusionLog=[];">Reset Universe</button>
+	</div>
+
+	<div id="log"></div>
 </div>
 
 <script>
+
+// ==================== FULL PERIODIC TABLE DATA (118 elements) ====================
+const ELEMENTS = {
+	1:  { n: "Hydrogen",     s: "H",   d: "Most abundant element in the universe. Stellar fusion fuel." },
+	2:  { n: "Helium",       s: "He",  d: "Noble gas. Product of Big Bang and stellar fusion." },
+	3:  { n: "Lithium",      s: "Li",  d: "Lightest metal. Used in batteries and mood stabilizers." },
+	4:  { n: "Beryllium",    s: "Be",  d: "Light, strong metal. Toxic but excellent in alloys." },
+	5:  { n: "Boron",        s: "B",   d: "Semimetal. Used in fiberglass and neutron absorption." },
+	6:  { n: "Carbon",       s: "C",   d: "Basis of all known life. Forms diamonds and graphene." },
+	7:  { n: "Nitrogen",     s: "N",   d: "78% of Earth's atmosphere. Essential for proteins." },
+	8:  { n: "Oxygen",       s: "O",   d: "Most abundant element in Earth's crust. We breathe it." },
+	9:  { n: "Fluorine",     s: "F",   d: "Most reactive element. Used in toothpaste and Teflon." },
+	10: { n: "Neon",         s: "Ne",  d: "Noble gas. Famous for glowing red-orange signs." },
+	11: { n: "Sodium",       s: "Na",  d: "Reactive alkali metal. Key in table salt (NaCl)." },
+	12: { n: "Magnesium",    s: "Mg",  d: "Light metal. Essential for chlorophyll and bones." },
+	13: { n: "Aluminium",    s: "Al",  d: "Most abundant metal in Earth's crust." },
+	14: { n: "Silicon",      s: "Si",  d: "Basis of semiconductors and computer chips." },
+	15: { n: "Phosphorus",   s: "P",   d: "Essential for DNA, ATP, and bones." },
+	16: { n: "Sulfur",       s: "S",   d: "Yellow nonmetal. Smells like rotten eggs in compounds." },
+	17: { n: "Chlorine",     s: "Cl",  d: "Greenish gas. Used in disinfectants and PVC." },
+	18: { n: "Argon",        s: "Ar",  d: "Noble gas. Used in welding and light bulbs." },
+	19: { n: "Potassium",    s: "K",   d: "Vital electrolyte. Highly reactive with water." },
+	20: { n: "Calcium",      s: "Ca",  d: "Essential for bones, teeth, and muscle function." },
+	21: { n: "Scandium",     s: "Sc",  d: "Rare earth metal used in aerospace alloys." },
+	22: { n: "Titanium",     s: "Ti",  d: "Strong, lightweight, corrosion-resistant metal." },
+	23: { n: "Vanadium",     s: "V",   d: "Used to strengthen steel." },
+	24: { n: "Chromium",     s: "Cr",  d: "Gives stainless steel its corrosion resistance." },
+	25: { n: "Manganese",    s: "Mn",  d: "Essential for steel production." },
+	26: { n: "Iron",         s: "Fe",  d: "The stability limit of nuclear fusion in stars." },
+	27: { n: "Cobalt",       s: "Co",  d: "Used in powerful magnets and batteries." },
+	28: { n: "Nickel",       s: "Ni",  d: "Used in stainless steel and coins." },
+	29: { n: "Copper",       s: "Cu",  d: "Excellent conductor. Used in wiring and plumbing." },
+	30: { n: "Zinc",         s: "Zn",  d: "Essential trace element. Used in galvanization." },
+	31: { n: "Gallium",      s: "Ga",  d: "Melts in your hand. Used in semiconductors." },
+	32: { n: "Germanium",    s: "Ge",  d: "Semiconductor used in early transistors." },
+	33: { n: "Arsenic",      s: "As",  d: "Highly toxic. Used in semiconductors." },
+	34: { n: "Selenium",     s: "Se",  d: "Essential trace element and photoconductor." },
+	35: { n: "Bromine",      s: "Br",  d: "Red-brown liquid halogen." },
+	36: { n: "Krypton",      s: "Kr",  d: "Noble gas used in high-performance lighting." },
+	37: { n: "Rubidium",     s: "Rb",  d: "Highly reactive alkali metal." },
+	38: { n: "Strontium",    s: "Sr",  d: "Used in fireworks and medical imaging." },
+	39: { n: "Yttrium",      s: "Y",   d: "Rare earth used in LEDs and superconductors." },
+	40: { n: "Zirconium",    s: "Zr",  d: "Corrosion-resistant metal used in nuclear reactors." },
+	41: { n: "Niobium",      s: "Nb",  d: "Used in superconducting magnets." },
+	42: { n: "Molybdenum",   s: "Mo",  d: "Essential for enzymes and high-strength steel." },
+	43: { n: "Technetium",   s: "Tc",  d: "Radioactive. First synthetic element." },
+	44: { n: "Ruthenium",    s: "Ru",  d: "Used in catalysts and electronics." },
+	45: { n: "Rhodium",      s: "Rh",  d: "Most expensive precious metal. Used in catalytic converters." },
+	46: { n: "Palladium",    s: "Pd",  d: "Used in catalytic converters and jewelry." },
+	47: { n: "Silver",       s: "Ag",  d: "Best electrical conductor. Used in photography." },
+	48: { n: "Cadmium",      s: "Cd",  d: "Toxic heavy metal used in batteries." },
+	49: { n: "Indium",       s: "In",  d: "Used in touchscreens and solar panels." },
+	50: { n: "Tin",          s: "Sn",  d: "Used in solder and bronze." },
+	51: { n: "Antimony",     s: "Sb",  d: "Used in flame retardants and semiconductors." },
+	52: { n: "Tellurium",    s: "Te",  d: "Used in solar panels and alloys." },
+	53: { n: "Iodine",       s: "I",   d: "Essential for thyroid hormones." },
+	54: { n: "Xenon",        s: "Xe",  d: "Noble gas used in ion thrusters and lighting." },
+	55: { n: "Caesium",      s: "Cs",  d: "Extremely reactive. Used in atomic clocks." },
+	56: { n: "Barium",       s: "Ba",  d: "Used in medical imaging and fireworks." },
+	57: { n: "Lanthanum",    s: "La",  d: "Rare earth used in optics and batteries." },
+	58: { n: "Cerium",       s: "Ce",  d: "Most abundant rare earth element." },
+	59: { n: "Praseodymium", s: "Pr",  d: "Used in magnets and aircraft engines." },
+	60: { n: "Neodymium",    s: "Nd",  d: "Powerful magnets for hard drives and EVs." },
+	61: { n: "Promethium",   s: "Pm",  d: "Radioactive rare earth." },
+	62: { n: "Samarium",     s: "Sm",  d: "Used in magnets and nuclear reactors." },
+	63: { n: "Europium",     s: "Eu",  d: "Used in phosphors for screens." },
+	64: { n: "Gadolinium",   s: "Gd",  d: "Used in MRI contrast agents." },
+	65: { n: "Terbium",      s: "Tb",  d: "Used in green phosphors and magnets." },
+	66: { n: "Dysprosium",   s: "Dy",  d: "High-temperature magnets." },
+	67: { n: "Holmium",      s: "Ho",  d: "Strongest magnetic field material." },
+	68: { n: "Erbium",       s: "Er",  d: "Used in fiber optics and lasers." },
+	69: { n: "Thulium",      s: "Tm",  d: "Rare earth used in lasers." },
+	70: { n: "Ytterbium",    s: "Yb",  d: "Used in atomic clocks and lasers." },
+	71: { n: "Lutetium",     s: "Lu",  d: "Used in PET scanners and catalysts." },
+	72: { n: "Hafnium",      s: "Hf",  d: "Used in nuclear control rods." },
+	73: { n: "Tantalum",     s: "Ta",  d: "Highly corrosion-resistant. Used in capacitors." },
+	74: { n: "Tungsten",     s: "W",   d: "Highest melting point of all metals." },
+	75: { n: "Rhenium",      s: "Re",  d: "Used in jet engines and catalysts." },
+	76: { n: "Osmium",       s: "Os",  d: "Densest naturally occurring element." },
+	77: { n: "Iridium",      s: "Ir",  d: "Most corrosion-resistant metal." },
+	78: { n: "Platinum",     s: "Pt",  d: "Used in catalytic converters and jewelry." },
+	79: { n: "Gold",         s: "Au",  d: "Highly valued noble metal. Excellent conductor." },
+	80: { n: "Mercury",      s: "Hg",  d: "Only metal liquid at room temperature." },
+	81: { n: "Thallium",     s: "Tl",  d: "Highly toxic heavy metal." },
+	82: { n: "Lead",         s: "Pb",  d: "Dense, toxic heavy metal." },
+	83: { n: "Bismuth",      s: "Bi",  d: "Low-toxicity heavy metal used in medicine." },
+	84: { n: "Polonium",     s: "Po",  d: "Highly radioactive." },
+	85: { n: "Astatine",     s: "At",  d: "Rarest naturally occurring element." },
+	86: { n: "Radon",        s: "Rn",  d: "Radioactive noble gas." },
+	87: { n: "Francium",     s: "Fr",  d: "Extremely rare and radioactive." },
+	88: { n: "Radium",       s: "Ra",  d: "Highly radioactive. Used in old glow paints." },
+	89: { n: "Actinium",     s: "Ac",  d: "Radioactive. Used in neutron sources." },
+	90: { n: "Thorium",      s: "Th",  d: "Fertile material for nuclear fuel." },
+	91: { n: "Protactinium", s: "Pa",  d: "Radioactive actinide." },
+	92: { n: "Uranium",      s: "U",   d: "Radioactive. Used in nuclear power and weapons." },
+	93: { n: "Neptunium",    s: "Np",  d: "Radioactive. Produced in nuclear reactors." },
+	94: { n: "Plutonium",    s: "Pu",  d: "Used in nuclear weapons and reactors." },
+	95: { n: "Americium",    s: "Am",  d: "Used in smoke detectors." },
+	96: { n: "Curium",       s: "Cm",  d: "Radioactive. Used in space probes." },
+	97: { n: "Berkelium",    s: "Bk",  d: "Synthetic radioactive element." },
+	98: { n: "Californium",  s: "Cf",  d: "Used in neutron sources." },
+	99: { n: "Einsteinium",  s: "Es",  d: "Synthetic. Named after Albert Einstein." },
+	100:{ n: "Fermium",      s: "Fm",  d: "Synthetic element." },
+	101:{ n: "Mendelevium",  s: "Md",  d: "Synthetic." },
+	102:{ n: "Nobelium",     s: "No",  d: "Synthetic." },
+	103:{ n: "Lawrencium",   s: "Lr",  d: "Synthetic." },
+	104:{ n: "Rutherfordium",s: "Rf",  d: "Synthetic superheavy element." },
+	105:{ n: "Dubnium",      s: "Db",  d: "Synthetic." },
+	106:{ n: "Seaborgium",   s: "Sg",  d: "Synthetic." },
+	107:{ n: "Bohrium",      s: "Bh",  d: "Synthetic." },
+	108:{ n: "Hassium",      s: "Hs",  d: "Synthetic." },
+	109:{ n: "Meitnerium",   s: "Mt",  d: "Synthetic." },
+	110:{ n: "Darmstadtium", s: "Ds",  d: "Synthetic." },
+	111:{ n: "Roentgenium",  s: "Rg",  d: "Synthetic." },
+	112:{ n: "Copernicium",  s: "Cn",  d: "Synthetic." },
+	113:{ n: "Nihonium",     s: "Nh",  d: "Synthetic." },
+	114:{ n: "Flerovium",    s: "Fl",  d: "Synthetic." },
+	115:{ n: "Moscovium",    s: "Mc",  d: "Synthetic." },
+	116:{ n: "Livermorium",  s: "Lv",  d: "Synthetic." },
+	117:{ n: "Tennessine",   s: "Ts",  d: "Synthetic." },
+	118:{ n: "Oganesson",    s: "Og",  d: "Synthetic noble gas. Heaviest known element." }
+};
+
+// Auto-generate remaining elements
+for (let z = 1; z <= 118; z++) {
+	if (!ELEMENTS[z]) {
+		const roots = ["nil","un","bi","tri","quad","pent","hex","sept","oct","enn"];
+		let name = z.toString().split('').map(d => roots[parseInt(d)] || "").join("") + "ium";
+		ELEMENTS[z] = { n: name.charAt(0).toUpperCase() + name.slice(1), s: "E"+z, d: "Synthetic / supernova product." };
+	}
+}
+
+// ==================== STELLAR NUCLEOSYNTHESIS STAGES ====================
+const STELLAR_STAGES = [
+	{ id: 0, name: "Hydrogen Burning",  desc: "pp-chain / CNO → Helium",                     color: "#66ccff", temp: "15 MK" },
+	{ id: 1, name: "Helium Burning",    desc: "Triple-alpha → Carbon & Oxygen",              color: "#ffaa33", temp: "100 MK" },
+	{ id: 2, name: "Carbon Burning",    desc: "C + C → Neon, Mg, Na",                        color: "#ff7733", temp: "600 MK" },
+	{ id: 3, name: "Neon/Oxygen Burning", desc: "Ne → O/Mg, O → Si/S",                     color: "#ff4422", temp: "1.5 GK" },
+	{ id: 4, name: "Silicon Burning",   desc: "Si → Iron-peak (Fe/Ni)",                      color: "#eeeeee", temp: "3 GK" },
+	{ id: 5, name: "Supernova (r-process)", desc: "Explosive neutron capture → heavy elements", color: "#cc66ff", temp: "explosive" }
+];
+
+let stellarStage = 0;   // current stage
+
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 let atoms = [];
@@ -60,12 +224,21 @@ let scaleMode = 'quantum';
 let tScale = 1.0;
 let gConst = 1.0;
 let isPaused = false;
+let fusionLog = [];
 
-const ELEMENTS = {
-	1: { n: "Hydrogen", s: "H", d: "Standard stellar fuel." },
-	6: { n: "Carbon", s: "C", d: "Foundational life atom." },
-	26: { n: "Iron", s: "Fe", d: "The stability limit of fusion." }
-};
+const pauseBtn = document.getElementById('pause-btn');
+
+function togglePause() {
+	isPaused = !isPaused;
+	pauseBtn.textContent = isPaused ? "▶ Play" : "⏸ Pause";
+	pauseBtn.classList.toggle('playing', isPaused);
+}
+
+function logFusion(message) {
+	fusionLog.unshift(`[${STELLAR_STAGES[stellarStage].name}] ${message}`);
+	if (fusionLog.length > 8) fusionLog.pop();
+	document.getElementById('log').innerHTML = fusionLog.map(m => `• ${m}`).join('<br>');
+}
 
 function setScale(s) {
 	scaleMode = s;
@@ -73,127 +246,266 @@ function setScale(s) {
 	document.getElementById('s-'+s).classList.add('active');
 }
 
-function getIUPAC(z) {
-	if (ELEMENTS[z]) return ELEMENTS[z];
-	const roots = ["nil", "un", "bi", "tri", "quad", "pent", "hex", "sept", "oct", "enn"];
-	let name = z.toString().split('').map(d => roots[parseInt(d)]).join('') + "ium";
-	return { n: name.charAt(0).toUpperCase() + name.slice(1), s: "E"+z, d: "Fused synthetic isotope." };
+function setStellarStage(s) {
+	stellarStage = s;
+	document.querySelectorAll('#stellar-stages button').forEach(b => b.classList.remove('active'));
+	document.getElementById('stage-'+s).classList.add('active');
+	document.getElementById('stage-name').innerText = STELLAR_STAGES[s].name;
+}
+
+function getElementData(z) {
+	return ELEMENTS[Math.floor(z)] || { n: "Unknown", s: "?", d: "" };
+}
+
+// Scientifically accurate stellar-stage-dependent byproducts
+function getFusionByproducts(z1, z2) {
+	const total = z1 + z2;
+	const byproducts = [];
+	const stage = STELLAR_STAGES[stellarStage];
+
+	switch (stellarStage) {
+		case 0: // Hydrogen Burning
+			if (total === 2) byproducts.push(2);           // ¹H + ¹H → ⁴He (simplified)
+			else if (Math.random() < 0.7) byproducts.push(2);
+			else byproducts.push(1);
+			break;
+
+		case 1: // Helium Burning (triple-alpha)
+			if (z1 === 2 && z2 === 2) byproducts.push(6);  // He + He → C (approximated)
+			else if (Math.random() < 0.65) byproducts.push(6); // C
+			else byproducts.push(8);                       // O
+			break;
+
+		case 2: // Carbon Burning
+			byproducts.push(10);                           // Neon
+			if (Math.random() < 0.5) byproducts.push(12);  // Magnesium
+			break;
+
+		case 3: // Neon / Oxygen Burning
+			if (Math.random() < 0.6) byproducts.push(14);  // Silicon
+			else byproducts.push(16);                      // Sulfur
+			break;
+
+		case 4: // Silicon Burning → iron peak
+			if (Math.random() < 0.7) {
+				byproducts.push(26);                       // Iron
+			} else {
+				byproducts.push(28);                       // Nickel
+			}
+			break;
+
+		case 5: // Supernova / r-process
+			if (Math.random() < 0.55) {
+				// Explosive fission + neutron burst
+				const split = Math.max(2, Math.floor(total * (0.3 + Math.random() * 0.4)));
+				byproducts.push(split);
+				byproducts.push(total - split);
+			}
+			// Add neutrons (treated as Z=1 for visuals)
+			const neutrons = Math.floor(Math.random() * 5) + 2;
+			for (let i = 0; i < neutrons; i++) byproducts.push(1);
+			break;
+	}
+
+	// Fallback for any unhandled combinations (still realistic)
+	if (byproducts.length === 0) {
+		if (total < 28) {
+			byproducts.push(Math.random() < 0.5 ? 2 : 1); // alpha or proton
+		} else if (total > 80) {
+			byproducts.push(1); byproducts.push(1); // neutrons
+		} else {
+			byproducts.push(1);
+		}
+	}
+	return byproducts;
 }
 
 class Atom {
-	constructor(z, x, y, vx, vy) {
-		this.z = z; this.x = x; this.y = y; this.vx = vx; this.vy = vy;
-		this.angle = Math.random() * 6.28;
+	constructor(z, x, y, vx = 0, vy = 0) {
+		this.z = Math.max(1, Math.min(118, Math.floor(z)));
+		this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+		this.flash = 0;
 	}
 
 	applyPhysics() {
 		if (isPaused) return;
 
-		atoms.forEach(other => {
-			if (other === this) return;
+		for (let i = atoms.length - 1; i >= 0; i--) {
+			const other = atoms[i];
+			if (other === this) continue;
+
 			let dx = other.x - this.x, dy = other.y - this.y;
 			let d2 = dx*dx + dy*dy + 50;
 			let d = Math.sqrt(d2);
 
 			if (scaleMode === 'space') {
-				// F = G(m1m2)/r^2
 				let f = (0.5 * gConst * this.z * other.z) / d2;
 				this.vx += (f * dx/d) / this.z;
 				this.vy += (f * dy/d) / this.z;
 			} else if (scaleMode === 'plasma') {
-				// Drag and Cohesion
-				this.vx *= 0.98; this.vy *= 0.98;
-				if (d < 100) { this.vx += dx * 0.001 * gConst; this.vy += dy * 0.001 * gConst; }
+				this.vx *= 0.97; this.vy *= 0.97;
+				if (d < 120) {
+					this.vx += dx * 0.0012 * gConst;
+					this.vy += dy * 0.0012 * gConst;
+				}
 			} else {
-				// Quantum: High vibration + Strong Force
-				this.vx += (Math.random()-0.5) * 0.5;
-				if (d < 60) { // Strong force attraction
-					this.vx += dx * 0.01 * gConst; this.vy += dy * 0.01 * gConst;
+				this.vx += (Math.random()-0.5) * 0.6;
+				if (d < 70) {
+					this.vx += dx * 0.012 * gConst;
+					this.vy += dy * 0.012 * gConst;
 				}
 			}
 
-			// Fusion Trigger
-			if (d < (Math.sqrt(this.z)*4 + Math.sqrt(other.z)*4)) {
+			if (d < (Math.sqrt(this.z) * 4.5 + Math.sqrt(other.z) * 4.5)) {
 				let relV = Math.hypot(this.vx - other.vx, this.vy - other.vy);
-				if (relV > 2 || scaleMode === 'quantum') this.fuse(other);
+				if (relV > 1.2 || scaleMode === 'quantum') {
+					this.fuse(other);
+					return;
+				}
 			}
-		});
+		}
 
-		if (scaleMode === 'plasma') this.vx += Math.sin(Date.now()*0.005) * 0.1; // Heartbeat
+		if (scaleMode === 'plasma') this.vx += Math.sin(Date.now()*0.005) * 0.12;
 
 		this.x += this.vx * tScale;
 		this.y += this.vy * tScale;
-		
-		// Boundaries
-		if (this.x < 0 || this.x > canvas.width) this.vx *= -0.8;
-		if (this.y < 0 || this.y > canvas.height) this.vy *= -0.8;
-		this.angle += 0.05 * tScale;
+
+		if (this.x < 0 || this.x > canvas.width) this.vx *= -0.75;
+		if (this.y < 0 || this.y > canvas.height) this.vy *= -0.75;
+
+		if (this.flash > 0) this.flash -= 0.08;
 	}
 
 	fuse(other) {
-		this.vx = (this.vx * this.z + other.vx * other.z) / (this.z + other.z);
-		this.vy = (this.vy * this.z + other.vy * other.z) / (this.z + other.z);
-		this.z += other.z;
+		const oldZ = this.z;
+		const otherZ = other.z;
+		const totalZ = oldZ + otherZ;
+
+		const wasExothermic = totalZ < 28;
+
+		this.z = Math.min(118, totalZ);
+		this.vx = (this.vx * oldZ + other.vx * otherZ) / totalZ;
+		this.vy = (this.vy * oldZ + other.vy * otherZ) / totalZ;
+
 		atoms = atoms.filter(a => a !== other);
+
+		const byproducts = getFusionByproducts(oldZ, otherZ);
+		byproducts.forEach(bz => {
+			if (bz < 1) return;
+			const angle = Math.random() * Math.PI * 2;
+			const speed = 3.5 + Math.random() * 4;
+			atoms.push(new Atom(bz, this.x, this.y,
+				this.vx + Math.cos(angle) * speed,
+				this.vy + Math.sin(angle) * speed));
+		});
+
+		if (wasExothermic) this.flash = 1.2;
+
+		let logMsg = `${getElementData(oldZ).s} + ${getElementData(otherZ).s} → ${getElementData(this.z).s}`;
+		if (byproducts.length) logMsg += ` + ${byproducts.map(b => getElementData(b).s).join(' ')}`;
+		if (!wasExothermic && stellarStage < 5) logMsg += " (endothermic)";
+		logFusion(logMsg);
+
 		this.updateUI();
 	}
 
 	updateUI() {
-		const data = getIUPAC(this.z);
+		const data = getElementData(this.z);
 		document.getElementById('info-card').style.display = 'block';
 		document.getElementById('node-name').innerText = data.n;
 		document.getElementById('node-sym').innerText = data.s;
 		document.getElementById('node-desc').innerText = data.d;
+		document.getElementById('node-z').innerText = this.z;
 	}
 
 	draw() {
-		let r = 4 + Math.sqrt(this.z) * 3;
+		let r = 5 + Math.sqrt(this.z) * 2.8;
 		let hue = (this.z * 137) % 360;
+
 		ctx.save();
 		ctx.translate(this.x, this.y);
 
-		// Scale-specific Rendering
-		if (scaleMode === 'quantum') {
-			ctx.shadowBlur = 15; ctx.shadowColor = `hsl(${hue},100%,50%)`;
-			// Probability Cloud
-			ctx.fillStyle = `hsla(${hue}, 100%, 50%, 0.1)`;
-			ctx.beginPath(); ctx.arc(0,0, r*3, 0, 6.28); ctx.fill();
+		// Stellar stage flash + quantum glow
+		if (this.flash > 0 || scaleMode === 'quantum') {
+			ctx.shadowBlur = 25 + this.flash * 25;
+			ctx.shadowColor = this.flash > 0 ? '#ff0' : `hsl(${hue},100%,65%)`;
+			ctx.fillStyle = `hsla(${hue},100%,60%,${0.15 + this.flash * 0.4})`;
+			ctx.beginPath(); ctx.arc(0,0,r*4,0,6.28); ctx.fill();
 		}
 
 		// Nucleus
-		ctx.fillStyle = `hsl(${hue}, 80%, 50%)`;
-		ctx.beginPath(); ctx.arc(0,0, r, 0, 6.28); ctx.fill();
+		ctx.fillStyle = `hsl(${hue},85%,55%)`;
+		ctx.beginPath(); ctx.arc(0,0,r,0,6.28); ctx.fill();
 
-		// Electrons (Bohr Shells)
-		let shells = Math.ceil(this.z / 6);
-		ctx.strokeStyle = `hsla(${hue}, 80%, 70%, 0.3)`;
-		for(let i=1; i<=shells; i++) {
-			ctx.beginPath(); ctx.arc(0,0, r + i*8, 0, 6.28); ctx.stroke();
-		}
 		ctx.restore();
 	}
 }
 
+function buildElementGrid() {
+	const grid = document.getElementById('element-grid');
+	grid.innerHTML = '';
+	for (let z = 1; z <= 118; z++) {
+		const data = getElementData(z);
+		const btn = document.createElement('div');
+		btn.className = 'element-btn';
+		btn.innerHTML = `<span class="z">${z}</span><span>${data.s}</span>`;
+		btn.title = data.n;
+		btn.onclick = () => curZ = z;
+		grid.appendChild(btn);
+	}
+}
+
+function buildStellarStageButtons() {
+	const container = document.getElementById('stellar-stages');
+	container.innerHTML = '';
+	STELLAR_STAGES.forEach(stage => {
+		const btn = document.createElement('button');
+		btn.id = 'stage-' + stage.id;
+		btn.innerHTML = `<b>${stage.name}</b><br><small style="font-size:9px;opacity:0.8;">${stage.desc}</small>`;
+		btn.style.borderColor = stage.color;
+		btn.onclick = () => setStellarStage(stage.id);
+		container.appendChild(btn);
+	});
+	// Activate first stage
+	document.getElementById('stage-0').classList.add('active');
+}
+
+// Mouse controls
 let mDown = false, sX, sY;
 canvas.addEventListener('mousedown', e => {
-	let target = atoms.find(a => Math.hypot(a.x-e.clientX, a.y-e.clientY) < 30);
+	const target = atoms.find(a => Math.hypot(a.x - e.clientX, a.y - e.clientY) < 40);
 	if (target) { target.updateUI(); return; }
 	mDown = true; sX = e.clientX; sY = e.clientY;
 });
+
 window.addEventListener('mouseup', e => {
 	if (!mDown) return;
-	atoms.push(new Atom(curZ, sX, sY, (e.clientX-sX)*0.1, (e.clientY-sY)*0.1));
+	atoms.push(new Atom(curZ, sX, sY, (e.clientX - sX)*0.08, (e.clientY - sY)*0.08));
 	mDown = false;
 });
 
 function loop() {
-	canvas.width = innerWidth; canvas.height = innerHeight;
-	ctx.fillStyle = scaleMode === 'plasma' ? '#100' : '#000';
-	ctx.fillRect(0,0,canvas.width, canvas.height);
-	atoms.forEach(a => { a.applyPhysics(); a.draw(); });
+	canvas.width = innerWidth;
+	canvas.height = innerHeight;
+
+	// Background tint based on stellar stage (more realistic star-core colors)
+	const stageColor = STELLAR_STAGES[stellarStage].color;
+	ctx.fillStyle = scaleMode === 'plasma' ? '#0a0508' : '#000';
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
+	ctx.fillStyle = stageColor + '22'; // subtle overlay
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+	atoms.forEach(a => a.applyPhysics());
+	atoms.forEach(a => a.draw());
+
 	requestAnimationFrame(loop);
 }
+
+// Initialize everything
+buildElementGrid();
+buildStellarStageButtons();
 setScale('quantum');
+setStellarStage(0);   // start in realistic H-burning
 loop();
 </script>
 </body>
