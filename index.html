@@ -3,10 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Scale-Shift: Quantum, Blood, Space — Stellar Nucleosynthesis</title>
+<title>Scale-Shift: Stellar Nucleosynthesis Simulator</title>
 <style>
 body{margin:0;background:#000;overflow:hidden;font-family:sans-serif;color:#fff;}
-#ui{position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.88);padding:15px;border-radius:12px;border:1px solid #444;width:310px;z-index:100;}
+#ui{position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.92);padding:15px;border-radius:12px;border:1px solid #444;width:320px;z-index:100;transition:all 0.3s;}
+#ui.hidden { transform: translateX(-340px); }
 .scale-select { display:flex; gap:4px; margin-bottom:12px; }
 .scale-select button { flex:1; font-size:10px; padding:8px; background:#222; color:#888; border:1px solid #444; cursor:pointer; border-radius:6px;}
 .scale-select button.active { background:#0078d7; color:#fff; border-color:#00bfff; }
@@ -14,23 +15,25 @@ body{margin:0;background:#000;overflow:hidden;font-family:sans-serif;color:#fff;
 .slider-group { margin-top:12px; font-size:10px; color:#aaa; text-transform:uppercase; }
 input[type=range] { width:100%; accent-color:#0078d7; cursor:pointer; }
 .val { float:right; color:#00bfff; }
-.element-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:3px; margin-top:10px; max-height:160px; overflow-y:auto; padding-right:5px; }
+.element-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:3px; margin-top:10px; max-height:140px; overflow-y:auto; padding-right:5px; }
 .element-btn { width:100%; aspect-ratio:1; font-size:10px; background:#1a1a1a; border:1px solid #444; color:#ddd; cursor:pointer; border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; transition:all 0.1s; }
 .element-btn:hover { background:#333; transform:scale(1.1); }
 .element-btn span.z { font-size:9px; opacity:0.7; }
 #stellar-stages { display:flex; flex-wrap:wrap; gap:4px; margin:12px 0; }
 #stellar-stages button { flex:1 1 45%; font-size:11px; padding:8px 6px; background:#111; border:1px solid #555; color:#ddd; cursor:pointer; border-radius:6px; }
 #stellar-stages button.active { background:#f80; color:#000; font-weight:bold; }
-#current-stage { margin:8px 0; padding:6px 10px; background:rgba(255,120,0,0.2); border-radius:6px; font-size:12px; text-align:center; }
+#current-stage { margin:8px 0; padding:8px 10px; background:rgba(255,140,0,0.25); border:1px solid #f80; border-radius:6px; font-size:12px; text-align:center; }
 #controls { display:flex; gap:8px; margin-top:12px; }
 #controls button { flex:1; padding:10px; font-size:14px; background:#222; color:#fff; border:1px solid #555; border-radius:6px; cursor:pointer; }
 #controls button:hover { background:#333; }
 #controls button#pause-btn.playing { background:#0a0; }
-#log { margin-top:12px; font-size:10px; color:#0f8; max-height:110px; overflow-y:auto; background:rgba(0,30,0,0.6); padding:8px; border-radius:4px; line-height:1.3; }
+#log { margin-top:12px; font-size:10px; color:#0f8; max-height:100px; overflow-y:auto; background:rgba(0,30,0,0.6); padding:8px; border-radius:4px; line-height:1.3; }
+#toggle-ui { position:absolute; top:15px; left:15px; z-index:200; background:rgba(0,0,0,0.7); color:#fff; border:none; padding:8px 12px; border-radius:50%; cursor:pointer; font-size:18px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<button id="toggle-ui" onclick="toggleUI()">≡</button>
 
 <div id="ui">
 	<div class="scale-select">
@@ -39,14 +42,12 @@ input[type=range] { width:100%; accent-color:#0078d7; cursor:pointer; }
 		<button id="s-space" onclick="setScale('space')">Space</button>
 	</div>
 
-	<div style="margin:8px 0; color:#0cc; font-size:11px;">Select Element to Spawn:</div>
+	<div style="margin:8px 0; color:#0cc; font-size:11px;">Spawn Element:</div>
 	<div class="element-grid" id="element-grid"></div>
 
-	<div id="current-stage">Current Stellar Stage: <b id="stage-name">Hydrogen Burning</b></div>
+	<div id="current-stage">Stage: <b id="stage-name">Hydrogen Burning</b> (<span id="stage-temp">15 MK</span>)</div>
 
-	<div id="stellar-stages">
-		<!-- Populated by JavaScript -->
-	</div>
+	<div id="stellar-stages"></div>
 
 	<div id="info-card">
 		<b id="node-name"></b> <span id="node-sym" style="float:right; font-size:18px;"></span>
@@ -62,19 +63,37 @@ input[type=range] { width:100%; accent-color:#0078d7; cursor:pointer; }
 		Gravity/Force <span class="val" id="g-val">1.0</span>
 		<input type="range" min="0" max="3" step="0.1" value="1" oninput="gConst=this.value; document.getElementById('g-val').innerText=this.value">
 	</div>
+	<div class="slider-group">
+		Pressure <span class="val" id="p-val">1.0</span>
+		<input type="range" min="0" max="5" step="0.1" value="1" oninput="pressure=this.value; document.getElementById('p-val').innerText=this.value">
+	</div>
 
 	<div id="controls">
 		<button id="pause-btn" onclick="togglePause()">⏸ Pause</button>
-		<button onclick="atoms=[]; fusionLog=[];">Reset Universe</button>
+		<button onclick="atoms=[]; fusionLog=[];">Reset</button>
 	</div>
 
 	<div id="log"></div>
 </div>
 
 <script>
+// ==================== VARIABLES ====================
+let atoms = [];
+let curZ = 1;
+let scaleMode = 'quantum';
+let tScale = 1.0;
+let gConst = 1.0;
+let pressure = 1.0;
+let isPaused = false;
+let stellarStage = 0;
+let fusionLog = [];
+let uiVisible = true;
+
+// ==================== FULL PERIODIC TABLE ====================
+const ELEMENTS = {};
 
 // ==================== FULL PERIODIC TABLE DATA (118 elements) ====================
-const ELEMENTS = {
+const baseElements = {
 	1:  { n: "Hydrogen",     s: "H",   d: "Most abundant element in the universe. Stellar fusion fuel." },
 	2:  { n: "Helium",       s: "He",  d: "Noble gas. Product of Big Bang and stellar fusion." },
 	3:  { n: "Lithium",      s: "Li",  d: "Lightest metal. Used in batteries and mood stabilizers." },
@@ -195,48 +214,42 @@ const ELEMENTS = {
 	118:{ n: "Oganesson",    s: "Og",  d: "Synthetic noble gas. Heaviest known element." }
 };
 
-// Auto-generate remaining elements
 for (let z = 1; z <= 118; z++) {
-	if (!ELEMENTS[z]) {
+	if (!baseElements[z]) {
 		const roots = ["nil","un","bi","tri","quad","pent","hex","sept","oct","enn"];
 		let name = z.toString().split('').map(d => roots[parseInt(d)] || "").join("") + "ium";
-		ELEMENTS[z] = { n: name.charAt(0).toUpperCase() + name.slice(1), s: "E"+z, d: "Synthetic / supernova product." };
+		baseElements[z] = { n: name.charAt(0).toUpperCase() + name.slice(1), s: "E"+z, d: "Produced in supernovae or neutron star mergers." };
 	}
 }
+Object.assign(ELEMENTS, baseElements);
 
-// ==================== STELLAR NUCLEOSYNTHESIS STAGES ====================
+// ==================== STELLAR STAGES ====================
 const STELLAR_STAGES = [
-	{ id: 0, name: "Hydrogen Burning",  desc: "pp-chain / CNO → Helium",                     color: "#66ccff", temp: "15 MK" },
-	{ id: 1, name: "Helium Burning",    desc: "Triple-alpha → Carbon & Oxygen",              color: "#ffaa33", temp: "100 MK" },
-	{ id: 2, name: "Carbon Burning",    desc: "C + C → Neon, Mg, Na",                        color: "#ff7733", temp: "600 MK" },
-	{ id: 3, name: "Neon/Oxygen Burning", desc: "Ne → O/Mg, O → Si/S",                     color: "#ff4422", temp: "1.5 GK" },
-	{ id: 4, name: "Silicon Burning",   desc: "Si → Iron-peak (Fe/Ni)",                      color: "#eeeeee", temp: "3 GK" },
-	{ id: 5, name: "Supernova (r-process)", desc: "Explosive neutron capture → heavy elements", color: "#cc66ff", temp: "explosive" }
+	{ id: 0, name: "Hydrogen Burning",   desc: "pp-chain / CNO",               temp: "15 MK",  color: "#66ccff" },
+	{ id: 1, name: "Helium Burning",     desc: "Triple-alpha process",         temp: "100 MK", color: "#ffaa33" },
+	{ id: 2, name: "Carbon Burning",     desc: "C+C fusion",                   temp: "600 MK", color: "#ff7733" },
+	{ id: 3, name: "Neon/Oxygen Burning",desc: "Ne & O fusion",                temp: "1.5 GK", color: "#ff4422" },
+	{ id: 4, name: "Silicon Burning",    desc: "Si → Fe/Ni",                   temp: "3 GK",   color: "#eeeeee" },
+	{ id: 5, name: "Supernova (r-process)", desc: "Explosive nucleosynthesis", temp: ">>10 GK",color: "#cc66ff" }
 ];
 
-let stellarStage = 0;   // current stage
-
-const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
-let atoms = [];
-let curZ = 1;
-let scaleMode = 'quantum';
-let tScale = 1.0;
-let gConst = 1.0;
-let isPaused = false;
-let fusionLog = [];
-
-const pauseBtn = document.getElementById('pause-btn');
-
+// ==================== HELPER FUNCTIONS ====================
 function togglePause() {
 	isPaused = !isPaused;
+	const pauseBtn = document.getElementById('pause-btn');
 	pauseBtn.textContent = isPaused ? "▶ Play" : "⏸ Pause";
 	pauseBtn.classList.toggle('playing', isPaused);
 }
 
+function toggleUI() {
+	uiVisible = !uiVisible;
+	document.getElementById('ui').classList.toggle('hidden', !uiVisible);
+	document.getElementById('toggle-ui').textContent = uiVisible ? "≡" : "☰";
+}
+
 function logFusion(message) {
 	fusionLog.unshift(`[${STELLAR_STAGES[stellarStage].name}] ${message}`);
-	if (fusionLog.length > 8) fusionLog.pop();
+	if (fusionLog.length > 9) fusionLog.pop();
 	document.getElementById('log').innerHTML = fusionLog.map(m => `• ${m}`).join('<br>');
 }
 
@@ -251,75 +264,36 @@ function setStellarStage(s) {
 	document.querySelectorAll('#stellar-stages button').forEach(b => b.classList.remove('active'));
 	document.getElementById('stage-'+s).classList.add('active');
 	document.getElementById('stage-name').innerText = STELLAR_STAGES[s].name;
+	document.getElementById('stage-temp').innerText = STELLAR_STAGES[s].temp;
 }
 
 function getElementData(z) {
 	return ELEMENTS[Math.floor(z)] || { n: "Unknown", s: "?", d: "" };
 }
 
-// Scientifically accurate stellar-stage-dependent byproducts
 function getFusionByproducts(z1, z2) {
 	const total = z1 + z2;
 	const byproducts = [];
-	const stage = STELLAR_STAGES[stellarStage];
 
 	switch (stellarStage) {
-		case 0: // Hydrogen Burning
-			if (total === 2) byproducts.push(2);           // ¹H + ¹H → ⁴He (simplified)
-			else if (Math.random() < 0.7) byproducts.push(2);
-			else byproducts.push(1);
-			break;
-
-		case 1: // Helium Burning (triple-alpha)
-			if (z1 === 2 && z2 === 2) byproducts.push(6);  // He + He → C (approximated)
-			else if (Math.random() < 0.65) byproducts.push(6); // C
-			else byproducts.push(8);                       // O
-			break;
-
-		case 2: // Carbon Burning
-			byproducts.push(10);                           // Neon
-			if (Math.random() < 0.5) byproducts.push(12);  // Magnesium
-			break;
-
-		case 3: // Neon / Oxygen Burning
-			if (Math.random() < 0.6) byproducts.push(14);  // Silicon
-			else byproducts.push(16);                      // Sulfur
-			break;
-
-		case 4: // Silicon Burning → iron peak
-			if (Math.random() < 0.7) {
-				byproducts.push(26);                       // Iron
-			} else {
-				byproducts.push(28);                       // Nickel
+		case 0: byproducts.push(total <= 4 ? 2 : 1); break;
+		case 1: byproducts.push(Math.random() < 0.6 ? 6 : 8); break;
+		case 2: byproducts.push(10); if (Math.random() < 0.4) byproducts.push(12); break;
+		case 3: byproducts.push(Math.random() < 0.5 ? 14 : 16); break;
+		case 4: byproducts.push(Math.random() < 0.65 ? 26 : 28); break;
+		case 5:
+			if (Math.random() < 0.6) {
+				const split = Math.max(2, Math.floor(total * 0.4));
+				byproducts.push(split, total - split);
 			}
-			break;
-
-		case 5: // Supernova / r-process
-			if (Math.random() < 0.55) {
-				// Explosive fission + neutron burst
-				const split = Math.max(2, Math.floor(total * (0.3 + Math.random() * 0.4)));
-				byproducts.push(split);
-				byproducts.push(total - split);
-			}
-			// Add neutrons (treated as Z=1 for visuals)
-			const neutrons = Math.floor(Math.random() * 5) + 2;
+			const neutrons = Math.floor(Math.random() * 6) + 3;
 			for (let i = 0; i < neutrons; i++) byproducts.push(1);
 			break;
-	}
-
-	// Fallback for any unhandled combinations (still realistic)
-	if (byproducts.length === 0) {
-		if (total < 28) {
-			byproducts.push(Math.random() < 0.5 ? 2 : 1); // alpha or proton
-		} else if (total > 80) {
-			byproducts.push(1); byproducts.push(1); // neutrons
-		} else {
-			byproducts.push(1);
-		}
 	}
 	return byproducts;
 }
 
+// ==================== ATOM CLASS ====================
 class Atom {
 	constructor(z, x, y, vx = 0, vy = 0) {
 		this.z = Math.max(1, Math.min(118, Math.floor(z)));
@@ -335,45 +309,49 @@ class Atom {
 			if (other === this) continue;
 
 			let dx = other.x - this.x, dy = other.y - this.y;
-			let d2 = dx*dx + dy*dy + 50;
+			let d2 = dx*dx + dy*dy + 40;
 			let d = Math.sqrt(d2);
 
+			const forceMult = gConst * pressure;
+
 			if (scaleMode === 'space') {
-				let f = (0.5 * gConst * this.z * other.z) / d2;
+				let f = (0.6 * forceMult * this.z * other.z) / d2;
 				this.vx += (f * dx/d) / this.z;
 				this.vy += (f * dy/d) / this.z;
 			} else if (scaleMode === 'plasma') {
-				this.vx *= 0.97; this.vy *= 0.97;
-				if (d < 120) {
-					this.vx += dx * 0.0012 * gConst;
-					this.vy += dy * 0.0012 * gConst;
+				this.vx *= 0.96; this.vy *= 0.96;
+				if (d < 130) {
+					this.vx += dx * 0.0015 * forceMult;
+					this.vy += dy * 0.0015 * forceMult;
 				}
 			} else {
-				this.vx += (Math.random()-0.5) * 0.6;
-				if (d < 70) {
-					this.vx += dx * 0.012 * gConst;
-					this.vy += dy * 0.012 * gConst;
+				this.vx += (Math.random()-0.5) * 0.7;
+				if (d < 75) {
+					this.vx += dx * 0.015 * forceMult;
+					this.vy += dy * 0.015 * forceMult;
 				}
 			}
 
-			if (d < (Math.sqrt(this.z) * 4.5 + Math.sqrt(other.z) * 4.5)) {
+			const fusionThreshold = (scaleMode === 'quantum' ? 1.0 : 1.8) / (pressure * (stellarStage + 1) * 0.6);
+
+			if (d < (Math.sqrt(this.z) * 4.8 + Math.sqrt(other.z) * 4.8)) {
 				let relV = Math.hypot(this.vx - other.vx, this.vy - other.vy);
-				if (relV > 1.2 || scaleMode === 'quantum') {
+				if (relV > fusionThreshold || scaleMode === 'quantum') {
 					this.fuse(other);
 					return;
 				}
 			}
 		}
 
-		if (scaleMode === 'plasma') this.vx += Math.sin(Date.now()*0.005) * 0.12;
+		if (scaleMode === 'plasma') this.vx += Math.sin(Date.now()*0.005) * 0.15;
 
 		this.x += this.vx * tScale;
 		this.y += this.vy * tScale;
 
-		if (this.x < 0 || this.x > canvas.width) this.vx *= -0.75;
-		if (this.y < 0 || this.y > canvas.height) this.vy *= -0.75;
+		if (this.x < 0 || this.x > canvas.width) this.vx *= -0.78;
+		if (this.y < 0 || this.y > canvas.height) this.vy *= -0.78;
 
-		if (this.flash > 0) this.flash -= 0.08;
+		if (this.flash > 0) this.flash -= 0.09;
 	}
 
 	fuse(other) {
@@ -381,7 +359,7 @@ class Atom {
 		const otherZ = other.z;
 		const totalZ = oldZ + otherZ;
 
-		const wasExothermic = totalZ < 28;
+		const exothermic = totalZ < 28;
 
 		this.z = Math.min(118, totalZ);
 		this.vx = (this.vx * oldZ + other.vx * otherZ) / totalZ;
@@ -393,17 +371,17 @@ class Atom {
 		byproducts.forEach(bz => {
 			if (bz < 1) return;
 			const angle = Math.random() * Math.PI * 2;
-			const speed = 3.5 + Math.random() * 4;
+			const speed = 3.8 + Math.random() * 4.5 * pressure;
 			atoms.push(new Atom(bz, this.x, this.y,
 				this.vx + Math.cos(angle) * speed,
 				this.vy + Math.sin(angle) * speed));
 		});
 
-		if (wasExothermic) this.flash = 1.2;
+		if (exothermic) this.flash = 1.4;
 
 		let logMsg = `${getElementData(oldZ).s} + ${getElementData(otherZ).s} → ${getElementData(this.z).s}`;
 		if (byproducts.length) logMsg += ` + ${byproducts.map(b => getElementData(b).s).join(' ')}`;
-		if (!wasExothermic && stellarStage < 5) logMsg += " (endothermic)";
+		if (!exothermic) logMsg += " (endothermic)";
 		logFusion(logMsg);
 
 		this.updateUI();
@@ -419,28 +397,27 @@ class Atom {
 	}
 
 	draw() {
-		let r = 5 + Math.sqrt(this.z) * 2.8;
+		let r = 5 + Math.sqrt(this.z) * 2.9;
 		let hue = (this.z * 137) % 360;
 
 		ctx.save();
 		ctx.translate(this.x, this.y);
 
-		// Stellar stage flash + quantum glow
 		if (this.flash > 0 || scaleMode === 'quantum') {
-			ctx.shadowBlur = 25 + this.flash * 25;
-			ctx.shadowColor = this.flash > 0 ? '#ff0' : `hsl(${hue},100%,65%)`;
-			ctx.fillStyle = `hsla(${hue},100%,60%,${0.15 + this.flash * 0.4})`;
-			ctx.beginPath(); ctx.arc(0,0,r*4,0,6.28); ctx.fill();
+			ctx.shadowBlur = 28 + this.flash * 30;
+			ctx.shadowColor = this.flash > 0 ? '#ffff00' : `hsl(${hue},100%,70%)`;
+			ctx.fillStyle = `hsla(${hue},100%,65%,${0.18 + this.flash*0.45})`;
+			ctx.beginPath(); ctx.arc(0,0,r*4.2,0,6.28); ctx.fill();
 		}
 
-		// Nucleus
-		ctx.fillStyle = `hsl(${hue},85%,55%)`;
+		ctx.fillStyle = `hsl(${hue},88%,58%)`;
 		ctx.beginPath(); ctx.arc(0,0,r,0,6.28); ctx.fill();
 
 		ctx.restore();
 	}
 }
 
+// ==================== UI BUILDERS ====================
 function buildElementGrid() {
 	const grid = document.getElementById('element-grid');
 	grid.innerHTML = '';
@@ -461,38 +438,40 @@ function buildStellarStageButtons() {
 	STELLAR_STAGES.forEach(stage => {
 		const btn = document.createElement('button');
 		btn.id = 'stage-' + stage.id;
-		btn.innerHTML = `<b>${stage.name}</b><br><small style="font-size:9px;opacity:0.8;">${stage.desc}</small>`;
+		btn.innerHTML = `<b>${stage.name}</b><br><small>${stage.desc}</small>`;
 		btn.style.borderColor = stage.color;
 		btn.onclick = () => setStellarStage(stage.id);
 		container.appendChild(btn);
 	});
-	// Activate first stage
 	document.getElementById('stage-0').classList.add('active');
 }
 
-// Mouse controls
+// ==================== MOUSE CONTROLS ====================
 let mDown = false, sX, sY;
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
 canvas.addEventListener('mousedown', e => {
-	const target = atoms.find(a => Math.hypot(a.x - e.clientX, a.y - e.clientY) < 40);
+	const target = atoms.find(a => Math.hypot(a.x - e.clientX, a.y - e.clientY) < 42);
 	if (target) { target.updateUI(); return; }
 	mDown = true; sX = e.clientX; sY = e.clientY;
 });
 
 window.addEventListener('mouseup', e => {
 	if (!mDown) return;
-	atoms.push(new Atom(curZ, sX, sY, (e.clientX - sX)*0.08, (e.clientY - sY)*0.08));
+	atoms.push(new Atom(curZ, sX, sY, (e.clientX - sX)*0.09, (e.clientY - sY)*0.09));
 	mDown = false;
 });
 
+// ==================== MAIN LOOP ====================
 function loop() {
 	canvas.width = innerWidth;
 	canvas.height = innerHeight;
 
-	// Background tint based on stellar stage (more realistic star-core colors)
-	const stageColor = STELLAR_STAGES[stellarStage].color;
-	ctx.fillStyle = scaleMode === 'plasma' ? '#0a0508' : '#000';
+	ctx.fillStyle = scaleMode === 'plasma' ? '#0a0308' : '#000';
 	ctx.fillRect(0, 0, canvas.width, canvas.height);
-	ctx.fillStyle = stageColor + '22'; // subtle overlay
+
+	ctx.fillStyle = STELLAR_STAGES[stellarStage].color + '18';
 	ctx.fillRect(0, 0, canvas.width, canvas.height);
 
 	atoms.forEach(a => a.applyPhysics());
@@ -501,11 +480,11 @@ function loop() {
 	requestAnimationFrame(loop);
 }
 
-// Initialize everything
+// ==================== INITIALIZE ====================
 buildElementGrid();
 buildStellarStageButtons();
 setScale('quantum');
-setStellarStage(0);   // start in realistic H-burning
+setStellarStage(0);
 loop();
 </script>
 </body>
